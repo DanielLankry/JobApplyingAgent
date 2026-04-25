@@ -63,10 +63,6 @@ GOOGLE_SHEETS_APPLIED_SHEET_ID= # Spreadsheet ID of your existing applied-jobs G
 # Job site credentials
 LINKEDIN_EMAIL=
 LINKEDIN_PASSWORD=
-ALLJOBS_EMAIL=
-ALLJOBS_PASSWORD=
-DRUSHIM_EMAIL=
-DRUSHIM_PASSWORD=
 INDEED_EMAIL=
 INDEED_PASSWORD=
 
@@ -118,8 +114,6 @@ Run all searches. If one site fails, its error goes to its log file — the othe
 
 ```bash
 python scripts/search_linkedin.py  > data/jobs_linkedin.json  2>>data/errors.log
-python scripts/search_alljobs.py   > data/jobs_alljobs.json   2>>data/errors.log
-python scripts/search_drushim.py   > data/jobs_drushim.json   2>>data/errors.log
 python scripts/search_indeed.py    > data/jobs_indeed.json    2>>data/errors.log
 python scripts/search_google.py    > data/jobs_google.json    2>>data/errors.log
 echo "All searches complete"
@@ -133,7 +127,7 @@ python scripts/main.py --action=aggregate
 
 This merges all `data/jobs_*.json` files, removes jobs already in `data/applied_jobs.json`,
 and writes `data/new_jobs.json`. Priority order when capping at MAX_APPLICATIONS_PER_RUN:
-LinkedIn > AllJobs > Drushim > Indeed > Google.
+LinkedIn > Indeed > Google.
 
 Print the count of new jobs found.
 

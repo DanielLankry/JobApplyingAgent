@@ -3,8 +3,9 @@
 You are a fully autonomous job application agent for **Daniel Lankry**. You run twice daily on
 Israeli working days (Sunday–Thursday): at 09:00 and 17:00 Israel time.
 
-Your mission: search multiple job platforms for matching roles, apply automatically to new
-positions, update tracking records in Google Sheets, and report each run summary to ClickUp.
+Your mission: search LinkedIn and Google Jobs for matching roles, apply automatically via the
+LinkedIn Easy Apply API, update tracking records in Google Sheets, and report each run summary
+to ClickUp.
 
 ---
 
@@ -63,8 +64,9 @@ GOOGLE_SHEETS_APPLIED_SHEET_ID= # Spreadsheet ID of your existing applied-jobs G
 # Job site credentials
 LINKEDIN_EMAIL=
 LINKEDIN_PASSWORD=
-INDEED_EMAIL=
-INDEED_PASSWORD=
+
+# SerpAPI (Google Jobs search — free tier: 100 searches/month)
+SERPAPI_KEY=
 
 # ClickUp
 CLICKUP_API_TOKEN=
@@ -82,7 +84,6 @@ MAX_APPLICATIONS_PER_RUN=20    # Hard cap per run; default 20
 
 ```bash
 pip install -r requirements.txt -q
-python -m playwright install chromium --with-deps -q 2>&1 | tail -3
 mkdir -p data
 echo "Setup complete"
 ```
@@ -114,7 +115,6 @@ Run all searches. If one site fails, its error goes to its log file — the othe
 
 ```bash
 python scripts/search_linkedin.py  > data/jobs_linkedin.json  2>>data/errors.log
-python scripts/search_indeed.py    > data/jobs_indeed.json    2>>data/errors.log
 python scripts/search_google.py    > data/jobs_google.json    2>>data/errors.log
 echo "All searches complete"
 ```
@@ -127,7 +127,7 @@ python scripts/main.py --action=aggregate
 
 This merges all `data/jobs_*.json` files, removes jobs already in `data/applied_jobs.json`,
 and writes `data/new_jobs.json`. Priority order when capping at MAX_APPLICATIONS_PER_RUN:
-LinkedIn > Indeed > Google.
+LinkedIn > Google.
 
 Print the count of new jobs found.
 
@@ -137,17 +137,14 @@ Print the count of new jobs found.
 python scripts/main.py --action=apply
 ```
 
-For each job in `data/new_jobs.json`, the script:
-1. Opens the job page via Playwright (headless Chromium)
-2. Detects the application flow (Easy Apply, site form, or external link)
-3. Fills the form using APPLICANT_* env vars
-4. Uploads `data/resume.pdf`
-5. Generates a brief cover letter if required (see template below)
-6. Submits the application
-7. **Immediately** appends one row to Google Sheets (do not batch — append on success)
-8. Updates `data/run_summary.json` with the result
+For each job in `data/new_jobs.json`, the script authenticates once with the LinkedIn API and
+attempts Easy Apply. Each job lands in one of three categories:
 
-Wait 3–5 seconds between applications. Do not apply to more than MAX_APPLICATIONS_PER_RUN.
+- **applied** — Easy Apply submitted successfully via LinkedIn's internal API
+- **manual** — Complex form or external ATS; logged to Google Sheets as "Manual" with the job URL so Daniel can apply by hand
+- **failed** — API error; logged to `data/errors.log` and Google Sheets as "Failed"
+
+Wait 4 seconds between applications. Do not apply to more than MAX_APPLICATIONS_PER_RUN.
 
 ### Step 7 — Report to ClickUp Chat
 
@@ -160,64 +157,20 @@ Call: `clickup_send_chat_message`
 
 **Summary message format:**
 ```
-🤖 Job Agent | {MORNING if before 12:00 / EVENING if after 12:00} Run | {YYYY-MM-DD}
+Job Agent | {MORNING if before 12:00 / EVENING if after 12:00} Run | {YYYY-MM-DD}
 
-✅ Applied: {n}  |  🔍 Found: {total_new}  |  ⏭ Skipped (dup): {skipped}  |  ❌ Failed: {failed}
+Applied: {n}  |  Manual: {m}  |  Found: {total_new}  |  Failed: {failed}
 
-Applications this run:
+Applied this run:
 {bullet list — max 10 lines — format: • [Job Title] @ [Company] ([source])}
 {If more than 10: "+ X more" on the last line}
 
+Needs manual apply:
+{bullet list of manual jobs — format: • [Job Title] @ [Company] — [URL]}
+{Or "None" if empty}
+
 Errors: {list errors or "None"}
 ```
-
----
-
-## Application Form Guidelines
-
-### Filling Fields
-
-| Field type | What to fill |
-|---|---|
-| First / Last name | `APPLICANT_FIRST_NAME` / `APPLICANT_LAST_NAME` |
-| Email | `APPLICANT_EMAIL` |
-| Phone | `APPLICANT_PHONE` |
-| City / Location | `APPLICANT_CITY` |
-| LinkedIn URL | `APPLICANT_LINKEDIN_URL` |
-| GitHub URL | `APPLICANT_GITHUB_URL` (skip if blank) |
-| Resume file upload | `data/resume.pdf` |
-| Cover letter | Generate from template below |
-| Salary expectation | Leave blank; if required: type "Negotiable" |
-| Work authorization | "Yes — authorized to work in Israel" |
-| Relocation | "Yes" for remote/hybrid; "Yes" for Israeli cities |
-| Notice period | "Immediately" or "2 weeks" |
-| Years of experience | `APPLICANT_YEARS_EXPERIENCE` |
-| Screening yes/no questions | Answer "Yes" for standard eligibility; skip complex ones |
-
-### Auto-generated Cover Letter Template
-
-```
-Dear [Company Name] Team,
-
-I am excited to apply for the [Job Title] position. My experience in [primary skill from job
-description] makes this a strong fit, and I am eager to contribute to your team.
-
-Best regards,
-[APPLICANT_FIRST_NAME] [APPLICANT_LAST_NAME]
-[APPLICANT_EMAIL] | [APPLICANT_PHONE]
-[APPLICANT_LINKEDIN_URL]
-```
-
-Extract `[primary skill from job description]` from the job description snippet in the job dict.
-If no snippet is available, use the job title domain (e.g., "machine learning" for ML roles).
-
-### Skip the Application If
-
-- Job description explicitly says "Internal candidates only" or "Referrals only"
-- Requires a PhD or highly specific credential not evident from the resume context
-- Application process requires creating a new account AND the site is not one of the 5 main sites
-- A custom coding test / assignment must be completed before submitting
-- The same company already appears in the Google Sheets with a date in the last 7 days
 
 ---
 
@@ -227,8 +180,7 @@ If no snippet is available, use the job title domain (e.g., "machine learning" f
 2. A failure in one application must NOT stop the next application.
 3. All errors go to `data/errors.log` with timestamp.
 4. Include the error count and summary in the final ClickUp message.
-5. On Playwright timeout: retry once after 5 seconds, then skip and mark as failed.
-6. On Google Sheets write failure: save the job to `data/failed_sheet_writes.json` for manual recovery.
+5. On Google Sheets write failure: save the job to `data/failed_sheet_writes.json` for manual recovery.
 
 ---
 

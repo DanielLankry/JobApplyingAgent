@@ -1,116 +1,95 @@
 #!/usr/bin/env python3
 """
-Search Google Jobs (google.com/search?ibp=htl;jobs) for matching roles in Israel.
-Extracts job cards from Google's job panel and outputs JSON to stdout.
+Search Google Jobs via SerpAPI — no browser required.
+Uses 2 broad keywords to stay within the 100 searches/month free tier.
+(2 keywords × 2 runs/day × 22 working days = 88 searches/month)
+Outputs JSON to stdout.
 """
 
 import json
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(__file__))
-from browser_utils import create_browser, human_delay
+from serpapi import GoogleSearch
 
-# Google job search queries — each produces a Google Jobs panel
+# Two broad queries cover all target roles within the free tier limit
 SEARCH_QUERIES = [
-    "backend engineer jobs Israel 2025",
-    "data engineer jobs Israel 2025",
-    "machine learning engineer jobs Israel",
-    "AI engineer jobs Israel",
-    "generative AI jobs Israel",
-    "MLOps engineer jobs Israel",
-    "cybersecurity engineer jobs Israel",
-    "penetration tester jobs Israel",
-    "AppSec engineer jobs Israel",
-    "data scientist jobs Israel",
-    "LLM engineer jobs Israel",
+    "AI engineer OR backend engineer OR data engineer OR MLOps Israel",
+    "cybersecurity engineer OR security engineer OR penetration tester Israel",
 ]
-
-MAX_JOBS_PER_QUERY = 6
-
-
-def search_google_jobs(page, query: str) -> list[dict]:
-    jobs = []
-    try:
-        encoded = query.replace(" ", "+")
-        url = f"https://www.google.com/search?q={encoded}&ibp=htl;jobs"
-        page.goto(url, timeout=30000)
-        page.wait_for_load_state("domcontentloaded", timeout=15000)
-        human_delay(2, 3)
-
-        # Click into Google Jobs panel if it exists
-        try:
-            panel = page.wait_for_selector("[data-hveid] .tNxQIb, .KLsYvd", timeout=5000)
-        except Exception:
-            panel = None
-
-        # Try to get job cards from the panel
-        cards = page.query_selector_all(
-            "li.iFjolb, .PwjeAc, [class*='job-result'], .gws-plugins-horizon-jobs__li-ed"
-        )
-
-        for card in cards[:MAX_JOBS_PER_QUERY]:
-            try:
-                title_el = card.query_selector(
-                    ".BjJfJf, .sH3zEc, [class*='title'], h3"
-                )
-                company_el = card.query_selector(
-                    ".vNEEBe, .nJlQNd, [class*='company']"
-                )
-                link_el = card.query_selector("a[href]")
-
-                if not title_el:
-                    continue
-
-                href = ""
-                if link_el:
-                    href = link_el.get_attribute("href") or ""
-                    if href.startswith("/"):
-                        href = "https://www.google.com" + href
-
-                title = title_el.inner_text().strip()
-                company = company_el.inner_text().strip() if company_el else ""
-
-                jobs.append({
-                    "id": f"google_{hash(title + company)}",
-                    "title": title,
-                    "company": company,
-                    "url": href,
-                    "source": "google",
-                    "location": "Israel",
-                    "description_snippet": "",
-                    "easy_apply": False,  # Google links to external sites
-                })
-            except Exception:
-                continue
-
-    except Exception as e:
-        print(f"[google] Search '{query}' error: {e}", file=sys.stderr)
-
-    return jobs
 
 
 def run():
-    p, browser, context = create_browser()
-    page = context.new_page()
+    api_key = os.environ.get("SERPAPI_KEY", "")
 
-    try:
-        all_jobs: list[dict] = []
-        seen_ids: set[str] = set()
+    if not api_key:
+        print(json.dumps({"jobs": [], "error": "SERPAPI_KEY not set"}))
+        return
 
-        for query in SEARCH_QUERIES:
-            jobs = search_google_jobs(page, query)
-            for job in jobs:
-                if job["id"] not in seen_ids and job["url"]:
-                    seen_ids.add(job["id"])
-                    all_jobs.append(job)
-            human_delay(3, 5)  # Respect Google rate limits
+    jobs = []
+    seen_ids: set[str] = set()
 
-        print(json.dumps({"jobs": all_jobs, "error": None, "count": len(all_jobs)}))
+    for query in SEARCH_QUERIES:
+        try:
+            params = {
+                "engine": "google_jobs",
+                "q": query,
+                "location": "Israel",
+                "hl": "en",
+                "chips": "date_posted:today",
+                "api_key": api_key,
+            }
 
-    finally:
-        browser.close()
-        p.stop()
+            search = GoogleSearch(params)
+            results = search.get_dict()
+
+            if "error" in results:
+                print(f"[google] SerpAPI error: {results['error']}", file=sys.stderr)
+                continue
+
+            for r in results.get("jobs_results", []):
+                job_id = r.get("job_id") or str(abs(hash(r.get("title", "") + r.get("company_name", ""))))
+
+                if job_id in seen_ids:
+                    continue
+                seen_ids.add(job_id)
+
+                # Check if any apply option links to LinkedIn Easy Apply
+                apply_options = r.get("apply_options", [])
+                linkedin_apply_url = ""
+                external_apply_url = ""
+
+                for opt in apply_options:
+                    link = opt.get("link", "")
+                    if "linkedin.com" in link:
+                        linkedin_apply_url = link
+                    elif not external_apply_url:
+                        external_apply_url = link
+
+                # Prefer LinkedIn apply link; fall back to first external link
+                apply_url = linkedin_apply_url or external_apply_url or ""
+
+                # Extract LinkedIn job ID from the apply URL if present
+                li_job_id = ""
+                if "linkedin.com/jobs/view/" in apply_url:
+                    li_job_id = apply_url.split("/jobs/view/")[1].split("/")[0].split("?")[0]
+
+                jobs.append({
+                    "id": f"google_{job_id}",
+                    "job_id": li_job_id,          # populated only if LinkedIn apply available
+                    "title": r.get("title", ""),
+                    "company": r.get("company_name", ""),
+                    "url": apply_url or f"https://www.google.com/search?q={r.get('title','')}+{r.get('company_name','')}",
+                    "source": "google",
+                    "location": r.get("location", "Israel"),
+                    "easy_apply": bool(linkedin_apply_url),   # True only if LinkedIn Easy Apply found
+                    "description_snippet": (r.get("description") or "")[:200],
+                })
+
+        except Exception as e:
+            print(f"[google] Query '{query}' error: {e}", file=sys.stderr)
+
+    print(json.dumps({"jobs": jobs, "error": None, "count": len(jobs)}))
 
 
 if __name__ == "__main__":

@@ -72,8 +72,6 @@ def aggregate():
 
     source_files = [
         ("linkedin", "jobs_linkedin.json"),
-        ("alljobs", "jobs_alljobs.json"),
-        ("drushim", "jobs_drushim.json"),
         ("indeed", "jobs_indeed.json"),
         ("google", "jobs_google.json"),
     ]

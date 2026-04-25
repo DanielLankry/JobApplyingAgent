@@ -16,7 +16,7 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(__file__))
 import dedup_manager
-from apply_job import apply_to_job
+import apply_linkedin as apply_module
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -25,7 +25,6 @@ NEW_JOBS_FILE = os.path.join(DATA_DIR, "new_jobs.json")
 SUMMARY_FILE = os.path.join(DATA_DIR, "run_summary.json")
 ERRORS_FILE = os.path.join(DATA_DIR, "errors.log")
 
-# Roles that should be excluded
 EXCLUDED_TITLE_KEYWORDS = [
     "full-stack", "fullstack", "full stack",
     "frontend", "front-end", "front end",
@@ -72,7 +71,6 @@ def aggregate():
 
     source_files = [
         ("linkedin", "jobs_linkedin.json"),
-        ("indeed", "jobs_indeed.json"),
         ("google", "jobs_google.json"),
     ]
 
@@ -102,18 +100,17 @@ def aggregate():
             seen_ids.add(job_id)
             all_jobs.append(job)
 
-    # Respect max applications cap (priority by source order above)
     capped = all_jobs[:MAX_PER_RUN]
 
     with open(NEW_JOBS_FILE, "w", encoding="utf-8") as f:
         json.dump(capped, f, ensure_ascii=False, indent=2)
 
-    total_found = len(all_jobs)
-    skipped = sum(
+    raw_count = sum(
         len(_load_json(os.path.join(DATA_DIR, fn)).get("jobs", []))
         for _, fn in source_files
-    ) - total_found
-    print(f"New jobs to apply: {len(capped)} (found: {total_found}, already applied: max ~{skipped})")
+    )
+    skipped = raw_count - len(all_jobs)
+    print(f"New jobs to apply: {len(capped)} (found: {len(all_jobs)}, already applied/dup: ~{skipped})")
     return capped
 
 
@@ -125,41 +122,59 @@ def apply_all():
 
     if not jobs:
         print("No new jobs to apply to.")
-        summary = {"applied": 0, "failed": 0, "applications": [], "errors": [], "total_new": 0}
+        summary = {
+            "applied": 0, "manual": 0, "failed": 0,
+            "applications": [], "manual_jobs": [], "errors": [], "total_new": 0,
+        }
+        with open(SUMMARY_FILE, "w") as f:
+            json.dump(summary, f, indent=2)
+        return summary
+
+    api = apply_module._get_api()
+    if not api:
+        _log_error("Could not authenticate with LinkedIn — no applications submitted")
+        summary = {
+            "applied": 0, "manual": 0, "failed": len(jobs),
+            "applications": [], "manual_jobs": [], "errors": ["LinkedIn auth failed"], "total_new": len(jobs),
+        }
         with open(SUMMARY_FILE, "w") as f:
             json.dump(summary, f, indent=2)
         return summary
 
     applied = []
+    manual = []
     failed = []
     errors = []
 
     for i, job in enumerate(jobs, 1):
-        print(f"[{i}/{len(jobs)}] Applying: {job.get('title')} @ {job.get('company')} ({job.get('source')})")
+        print(f"[{i}/{len(jobs)}] {job.get('title')} @ {job.get('company')} ({job.get('source')})")
         try:
-            result = apply_to_job(job)
-            if result.get("success"):
-                # Write to Google Sheets immediately
+            result = apply_module.apply_to_job(api, job)
+            status = result.get("status", "failed")
+            reason = result.get("reason", "Unknown")
+
+            if status == "applied":
                 dedup_manager.append_to_sheet(job, status="Applied")
-                # Update local dedup cache
                 dedup_manager.mark_applied_local(job.get("url", ""))
                 applied.append(job)
-                print(f"  ✅ Applied successfully")
+                print(f"  Applied")
+            elif status == "manual":
+                dedup_manager.append_to_sheet(job, status="Manual", notes=f"Needs manual apply: {reason}")
+                manual.append({**job, "reason": reason})
+                print(f"  Manual: {reason}")
             else:
-                reason = result.get("reason", "Unknown")
                 dedup_manager.append_to_sheet(job, status="Failed", notes=f"Auto-apply failed: {reason}")
                 failed.append({**job, "reason": reason})
                 _log_error(f"Apply failed: {job.get('title')} @ {job.get('company')} — {reason}")
-                print(f"  ❌ Failed: {reason}")
+                print(f"  Failed: {reason}")
 
         except Exception as e:
             msg = str(e)
             failed.append({**job, "reason": msg})
             _log_error(f"Apply exception: {job.get('title')} @ {job.get('company')} — {msg}")
             errors.append(msg)
-            print(f"  ❌ Exception: {msg}")
+            print(f"  Exception: {msg}")
 
-        # Rate limiting between applications
         time.sleep(4)
 
     now = datetime.utcnow()
@@ -171,9 +186,11 @@ def apply_all():
         "run_type": run_type,
         "total_new": len(jobs),
         "applied": len(applied),
+        "manual": len(manual),
         "failed": len(failed),
-        "skipped_dedup": 0,  # filled by aggregate step
+        "skipped_dedup": 0,
         "applications": applied,
+        "manual_jobs": manual,
         "failed_jobs": failed,
         "errors": errors,
     }
@@ -181,7 +198,7 @@ def apply_all():
     with open(SUMMARY_FILE, "w", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=False, indent=2)
 
-    print(f"\nRun complete: {len(applied)} applied, {len(failed)} failed")
+    print(f"\nRun complete: {len(applied)} applied, {len(manual)} manual, {len(failed)} failed")
     return summary
 
 

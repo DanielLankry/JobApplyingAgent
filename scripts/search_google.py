@@ -10,7 +10,7 @@ import json
 import os
 import sys
 
-from serpapi import GoogleSearch
+import serpapi as _serpapi
 
 # Two broad queries cover all target roles within the free tier limit
 SEARCH_QUERIES = [
@@ -40,8 +40,7 @@ def run():
                 "api_key": api_key,
             }
 
-            search = GoogleSearch(params)
-            results = search.get_dict()
+            results = dict(_serpapi.search(params))
 
             if "error" in results:
                 print(f"[google] SerpAPI error: {results['error']}", file=sys.stderr)

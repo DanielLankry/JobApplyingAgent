@@ -28,16 +28,15 @@ no duplicate applications).
 
 Working directory: the project root (`C:\Users\Daniel\Desktop\Files\Projects\JobApplayingAgent`).
 
-If a `venv/` directory exists at the project root, activate it first:
+Run the Phase 1 entrypoint, preferring the project's venv if it exists
+(falls back to system Python so a missing venv doesn't break the run):
 
 ```bash
-source venv/Scripts/activate || true
-```
-
-Then run:
-
-```bash
-python scripts/run_agent.py
+if [ -x "venv/Scripts/python.exe" ]; then
+  venv/Scripts/python.exe scripts/run_agent.py
+else
+  python scripts/run_agent.py
+fi
 ```
 
 **If the first stdout line is `SKIP`** — today is a non-working day or an

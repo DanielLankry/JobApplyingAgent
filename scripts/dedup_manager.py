@@ -25,13 +25,54 @@ SCOPES = [
 ]
 
 
-def _get_sheet():
-    sa_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "")
-    sheet_id = os.environ.get("GOOGLE_SHEETS_APPLIED_SHEET_ID", "")
-    if not sa_json or not sheet_id:
-        raise EnvironmentError("Google Sheets env vars not set")
+def _load_service_account_info() -> dict:
+    """Resolve service-account credentials from one of two sources:
 
-    creds = Credentials.from_service_account_info(json.loads(sa_json), scopes=SCOPES)
+    1. GOOGLE_SERVICE_ACCOUNT_JSON_PATH — path to a JSON key file on disk
+       (preferred — escapes the newline-escaping nightmare of putting a
+       PEM block inside a single-line .env value).
+    2. GOOGLE_SERVICE_ACCOUNT_JSON — the JSON content as a single line.
+
+    Raises EnvironmentError with a useful message if neither works."""
+    path = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON_PATH", "").strip()
+    if path:
+        try:
+            with open(path, encoding="utf-8") as f:
+                return json.load(f)
+        except FileNotFoundError:
+            raise EnvironmentError(
+                f"GOOGLE_SERVICE_ACCOUNT_JSON_PATH points to {path} but file not found"
+            )
+        except json.JSONDecodeError as e:
+            raise EnvironmentError(
+                f"Invalid JSON in service account file {path}: {e}"
+            )
+
+    raw = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "")
+    if not raw:
+        raise EnvironmentError(
+            "Set GOOGLE_SERVICE_ACCOUNT_JSON_PATH (recommended — file path) "
+            "or GOOGLE_SERVICE_ACCOUNT_JSON (single-line JSON). Neither is set."
+        )
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise EnvironmentError(
+            f"GOOGLE_SERVICE_ACCOUNT_JSON failed to parse: {e}. "
+            f"Tip: prefer GOOGLE_SERVICE_ACCOUNT_JSON_PATH=path/to/key.json — "
+            f"single-line JSON in .env is fragile because the private_key's "
+            f"newlines must be escaped as literal \\n inside the value."
+        )
+
+
+def _get_sheet():
+    sheet_id = os.environ.get("GOOGLE_SHEETS_APPLIED_SHEET_ID", "")
+    if not sheet_id:
+        raise EnvironmentError("GOOGLE_SHEETS_APPLIED_SHEET_ID not set")
+
+    creds = Credentials.from_service_account_info(
+        _load_service_account_info(), scopes=SCOPES
+    )
     client = gspread.authorize(creds)
     spreadsheet = client.open_by_key(sheet_id)
     return spreadsheet.sheet1

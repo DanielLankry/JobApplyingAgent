@@ -6,15 +6,24 @@ Search Google for matching jobs via SerpAPI across four sources:
   - comeet.co site search                        -> source="comeet"
   - jobs.lever.co site search                    -> source="lever"
 
+Uses SerpAPI's HTTPS endpoint directly via the `requests` library — no
+SDK dependency (the various `serpapi` and `google-search-results` PyPI
+packages have churning APIs and conflicting installs; calling the REST
+endpoint sidesteps that).
+
 Outputs one merged JSON payload to stdout. Each job is tagged with its
-source so Phase 2 of the agent can route apply behavior correctly.
+source so Phase 2 can route apply behavior correctly.
 """
 
 import json
 import os
 import sys
 
-import serpapi as _serpapi
+import requests
+
+
+SERPAPI_ENDPOINT = "https://serpapi.com/search.json"
+HTTP_TIMEOUT = 30
 
 
 # Single broad google_jobs query. The engine itself does role matching.
@@ -23,7 +32,7 @@ GOOGLE_JOBS_QUERY = (
     "cybersecurity engineer OR ML engineer Israel"
 )
 
-# Site-restricted searches. Each tuple: (source_tag, domain, query_template).
+# Site-restricted searches. Each tuple: (source_tag, domain, query).
 SITE_SEARCHES = [
     ("greenhouse", "boards.greenhouse.io",
      'site:boards.greenhouse.io ("Backend" OR "ML" OR "AI" OR "Data" OR "Security") Israel'),
@@ -32,6 +41,13 @@ SITE_SEARCHES = [
     ("lever", "jobs.lever.co",
      'site:jobs.lever.co ("Backend" OR "ML" OR "AI" OR "Data" OR "Security") Israel'),
 ]
+
+
+def _serpapi_get(params: dict) -> dict:
+    """Hit the SerpAPI REST endpoint and return the JSON response."""
+    resp = requests.get(SERPAPI_ENDPOINT, params=params, timeout=HTTP_TIMEOUT)
+    resp.raise_for_status()
+    return resp.json()
 
 
 def _normalize_google_jobs(results: dict) -> list[dict]:
@@ -83,10 +99,7 @@ def _normalize_site_search(results: dict, source_tag: str) -> list[dict]:
         if not url:
             continue
 
-        # Best-effort company extraction from URL slug, e.g.:
-        #   boards.greenhouse.io/companyname/jobs/12345 -> "companyname"
-        #   jobs.lever.co/companyname/abc -> "companyname"
-        #   www.comeet.co/jobs/companyname/ID -> "companyname"
+        # Best-effort company extraction from URL slug.
         company = ""
         try:
             path = url.split("//", 1)[-1].split("/", 1)[1]
@@ -129,7 +142,7 @@ def _run_google_jobs(api_key: str) -> list[dict]:
         "api_key": api_key,
     }
     try:
-        results = dict(_serpapi.search(params))
+        results = _serpapi_get(params)
         if "error" in results:
             print(f"[google] SerpAPI error: {results['error']}", file=sys.stderr)
             return []
@@ -144,12 +157,12 @@ def _run_site_search(api_key: str, source_tag: str, query: str) -> list[dict]:
         "engine": "google",
         "q": query,
         "hl": "en",
-        "tbs": "qdr:d",
+        "tbs": "qdr:d",        # past 24 hours
         "num": 20,
         "api_key": api_key,
     }
     try:
-        results = dict(_serpapi.search(params))
+        results = _serpapi_get(params)
         if "error" in results:
             print(f"[{source_tag}] SerpAPI error: {results['error']}", file=sys.stderr)
             return []

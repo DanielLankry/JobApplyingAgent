@@ -23,14 +23,47 @@ def _profile() -> dict:
 
 
 def _get_api() -> Linkedin | None:
+    """
+    Authenticate to LinkedIn via the unofficial voyager API.
+
+    Strategy: prefer cookie-based auth when `LINKEDIN_LI_AT` is set —
+    LinkedIn aggressively triggers a CHALLENGE on email/password login from
+    a new IP, and a working `li_at` cookie skips that flow entirely. Fall
+    back to email/password only if no cookie is present.
+
+    To get the cookie:
+      1. Log into linkedin.com manually in Chrome
+      2. DevTools -> Application -> Cookies -> https://www.linkedin.com
+      3. Copy the value of `li_at` (a long string starting with "AQE...")
+      4. Set LINKEDIN_LI_AT=<that value> in .env
+    """
     email = os.environ.get("LINKEDIN_EMAIL", "")
     password = os.environ.get("LINKEDIN_PASSWORD", "")
+    li_at = os.environ.get("LINKEDIN_LI_AT", "").strip()
+
+    if li_at:
+        try:
+            from requests.cookies import RequestsCookieJar
+            jar = RequestsCookieJar()
+            jar.set("li_at", li_at, domain=".linkedin.com")
+            # linkedin-api still requires email/password as positional args even
+            # when cookies are supplied; passing dummies is fine when
+            # authenticate=False because it just attaches the jar to its session.
+            return Linkedin(email or "noop@example.com",
+                            password or "noop",
+                            cookies=jar,
+                            authenticate=False)
+        except Exception as e:
+            print(f"[apply] cookie-based LinkedIn auth failed: {e}", file=sys.stderr)
+            # fall through to password attempt if creds are also set
+
     if not email or not password:
         return None
     try:
         return Linkedin(email, password, authenticate=True)
     except Exception as e:
-        print(f"[apply] LinkedIn login failed: {e}", file=sys.stderr)
+        print(f"[apply] LinkedIn password login failed (CHALLENGE expected from new IP — set LINKEDIN_LI_AT cookie instead): {e}",
+              file=sys.stderr)
         return None
 
 

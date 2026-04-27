@@ -1,5 +1,8 @@
 """Verify search_google produces source-tagged jobs across multiple SerpAPI
-calls (Google Jobs + site-restricted Google searches for ATS hosts)."""
+calls (Google Jobs + site-restricted Google searches for ATS hosts).
+
+These tests mock `requests.get` since search_google.py now hits the SerpAPI
+HTTPS endpoint directly rather than going through an SDK."""
 import json
 
 import search_google
@@ -23,7 +26,6 @@ def _fake_google_jobs_response():
 
 
 def _fake_google_search_response(domain: str, host_label: str):
-    """Minimal SerpAPI google-engine response for site:<domain> queries."""
     return {
         "organic_results": [
             {
@@ -36,7 +38,6 @@ def _fake_google_search_response(domain: str, host_label: str):
 
 
 def _route_response(params):
-    """Return a fake SerpAPI dict based on the engine + q in params."""
     engine = params.get("engine")
     q = params.get("q", "")
     if engine == "google_jobs":
@@ -50,16 +51,36 @@ def _route_response(params):
     return {}
 
 
+class _FakeResponse:
+    def __init__(self, payload, *, raise_exc=None):
+        self._payload = payload
+        self._raise_exc = raise_exc
+
+    def raise_for_status(self):
+        if self._raise_exc is not None:
+            raise self._raise_exc
+
+    def json(self):
+        return self._payload
+
+
+def _make_fake_get(responder):
+    """Build a fake `requests.get` that records params and routes via responder.
+    `responder(params)` may return a dict (success) or raise (network error)."""
+    captured = []
+
+    def _fake_get(url, params=None, timeout=None):
+        captured.append(params)
+        return _FakeResponse(responder(params))
+
+    return _fake_get, captured
+
+
 def test_run_emits_jobs_tagged_with_each_source(monkeypatch, capsys):
     monkeypatch.setenv("SERPAPI_KEY", "fake-key")
 
-    captured_calls = []
-
-    def _fake_search(params):
-        captured_calls.append(params)
-        return _route_response(params)
-
-    monkeypatch.setattr(search_google._serpapi, "search", _fake_search)
+    fake_get, captured = _make_fake_get(_route_response)
+    monkeypatch.setattr(search_google.requests, "get", fake_get)
 
     search_google.run()
 
@@ -75,7 +96,8 @@ def test_run_emits_jobs_tagged_with_each_source(monkeypatch, capsys):
         assert job["source"] in {"google", "comeet", "greenhouse", "lever"}
         assert job["id"].startswith(f"{job['source']}_")
 
-    assert len(captured_calls) == 4
+    assert len(captured) == 4
+    assert all(p.get("api_key") == "fake-key" for p in captured)
 
 
 def test_missing_api_key_returns_error(monkeypatch, capsys):
@@ -92,12 +114,13 @@ def test_one_source_failure_does_not_kill_others(monkeypatch, capsys):
     jobs from the surviving sources."""
     monkeypatch.setenv("SERPAPI_KEY", "fake-key")
 
-    def _fake_search(params):
+    def _responder(params):
         if "site:comeet.co" in params.get("q", ""):
             raise RuntimeError("simulated SerpAPI 500")
         return _route_response(params)
 
-    monkeypatch.setattr(search_google._serpapi, "search", _fake_search)
+    fake_get, _ = _make_fake_get(_responder)
+    monkeypatch.setattr(search_google.requests, "get", fake_get)
     search_google.run()
 
     out = capsys.readouterr().out.strip()
@@ -105,3 +128,23 @@ def test_one_source_failure_does_not_kill_others(monkeypatch, capsys):
     sources = sorted({job["source"] for job in payload["jobs"]})
     assert "comeet" not in sources
     assert {"google", "greenhouse", "lever"}.issubset(set(sources))
+
+
+def test_serpapi_returns_error_field_in_payload(monkeypatch, capsys):
+    """When SerpAPI itself returns an {"error": ...} payload, that source
+    yields zero jobs but doesn't crash the run."""
+    monkeypatch.setenv("SERPAPI_KEY", "fake-key")
+
+    def _responder(params):
+        if params.get("engine") == "google_jobs":
+            return {"error": "Quota exceeded"}
+        return _route_response(params)
+
+    fake_get, _ = _make_fake_get(_responder)
+    monkeypatch.setattr(search_google.requests, "get", fake_get)
+    search_google.run()
+
+    payload = json.loads(capsys.readouterr().out.strip())
+    sources = {job["source"] for job in payload["jobs"]}
+    assert "google" not in sources
+    assert {"greenhouse", "comeet", "lever"}.issubset(sources)

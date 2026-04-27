@@ -3,6 +3,7 @@
 *.env
 *credentials*.json
 service_account*.json
+config/applicant.json
 
 # Runtime data — regenerated each run
 data/resume.pdf
@@ -11,6 +12,10 @@ data/new_jobs.json
 data/run_summary.json
 data/errors.log
 data/failed_sheet_writes.json
+data/dry_run_log.jsonl
+data/unanswered_questions.log
+data/apply_logs/
+data/chrome_profile/
 
 # Keep the dedup cache so it acts as a local backup
 # (data/applied_jobs.json is intentionally tracked)
@@ -21,6 +26,7 @@ __pycache__/
 .venv/
 venv/
 *.egg-info/
+.pytest_cache/
 
 # Playwright
 .playwright/

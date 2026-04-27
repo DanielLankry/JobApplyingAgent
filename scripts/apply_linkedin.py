@@ -52,11 +52,18 @@ def _cover_letter(job: dict, profile: dict) -> str:
 def apply_to_job(api: Linkedin, job: dict) -> dict:
     """
     Attempt Easy Apply via LinkedIn's internal voyager API.
-    Returns {"status": "applied"|"manual"|"failed", "reason": str}
+    Returns {"status": "applied"|"manual"|"failed"|"dry_run", "reason": str}
     """
     job_id = job.get("job_id", "")
     if not job_id:
         return {"status": "manual", "reason": "No LinkedIn job ID — apply via URL"}
+
+    # DRY_RUN: skip the actual easyApply POST. The "dry_run" status tells
+    # run_agent.py NOT to mark the job as applied locally or write it to
+    # the Sheet (Section 11 of the spec — jobs stay re-applyable when the
+    # flag flips to false at the end of the 14-day shadow period).
+    if os.environ.get("DRY_RUN", "").strip().lower() == "true":
+        return {"status": "dry_run", "reason": "DRY_RUN mode"}
 
     profile = _profile()
 

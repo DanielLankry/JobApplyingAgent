@@ -30,3 +30,10 @@ venv/
 
 # Playwright
 .playwright/
+
+# Claude Code local runtime state
+.claude/
+
+# Personal artifacts that live alongside the repo but aren't tracked
+Daniel_Lonkry_Resume.pdf
+*.xlsx

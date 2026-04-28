@@ -60,9 +60,13 @@ EXCLUDED_TITLE_KEYWORDS = [
     "frontend", "front-end", "front end",
     "mobile", "ios", "android", "flutter", "react native",
     "qa ", " qa", "quality assurance", "sdet",
-    "sales", "marketing", "hr ", " hr", "human resource",
+    "sales", "marketing", "advertising", "growth",
+    "account executive", "account manager", "customer success",
+    "recruiter", "recruiting", "talent acquisition",
+    "hr ", " hr", "human resource", "people ops",
     "project manager", "product manager", "scrum master",
     "technical writer", "devrel", "developer relations",
+    "php developer", "wordpress",
 ]
 
 MAX_PER_RUN = int(os.environ.get("MAX_APPLICATIONS_PER_RUN", "20"))

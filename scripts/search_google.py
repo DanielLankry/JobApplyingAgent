@@ -157,7 +157,7 @@ def _run_site_search(api_key: str, source_tag: str, query: str) -> list[dict]:
         "engine": "google",
         "q": query,
         "hl": "en",
-        "tbs": "qdr:d",        # past 24 hours
+        "tbs": "qdr:w",        # past week — daily filter was empirically too tight for ATS sites
         "num": 20,
         "api_key": api_key,
     }

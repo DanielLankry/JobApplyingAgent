@@ -2,8 +2,11 @@
 .env
 *.env
 *credentials*.json
+client_secret*.json
 service_account*.json
 config/applicant.json
+gcp/
+.gcp/
 
 # Runtime data — regenerated each run
 data/resume.pdf

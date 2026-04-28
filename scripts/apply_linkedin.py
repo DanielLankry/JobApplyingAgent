@@ -43,16 +43,34 @@ def _get_api() -> Linkedin | None:
 
     if li_at:
         try:
+            import requests
             from requests.cookies import RequestsCookieJar
+
+            # linkedin-api's `_set_session_cookies` reads JSESSIONID off the jar
+            # to populate the csrf-token header. li_at alone isn't enough — fetch
+            # a fresh JSESSIONID from /uas/authenticate (LinkedIn issues one on
+            # any anonymous GET) and combine with the user's li_at.
+            seed = requests.get(
+                "https://www.linkedin.com/uas/authenticate",
+                headers={"User-Agent": "Mozilla/5.0"},
+                timeout=15,
+            )
+            jsessionid = seed.cookies.get("JSESSIONID", "").strip('"')
+            if not jsessionid:
+                raise RuntimeError("LinkedIn did not issue a JSESSIONID cookie")
+
             jar = RequestsCookieJar()
             jar.set("li_at", li_at, domain=".linkedin.com")
-            # linkedin-api still requires email/password as positional args even
-            # when cookies are supplied; passing dummies is fine when
-            # authenticate=False because it just attaches the jar to its session.
+            jar.set("JSESSIONID", f'"{jsessionid}"', domain=".linkedin.com")
+
+            # IMPORTANT: cookies are only attached when authenticate=True AND
+            # cookies is truthy (see linkedin_api/linkedin.py:76-82). Passing
+            # authenticate=False skips the cookie-set branch entirely, which is
+            # why every voyager call returned "CSRF check failed" before.
             return Linkedin(email or "noop@example.com",
                             password or "noop",
                             cookies=jar,
-                            authenticate=False)
+                            authenticate=True)
         except Exception as e:
             print(f"[apply] cookie-based LinkedIn auth failed: {e}", file=sys.stderr)
             # fall through to password attempt if creds are also set
@@ -112,8 +130,11 @@ def apply_to_job(api: Linkedin, job: dict) -> dict:
         if not is_easy_apply:
             return {"status": "manual", "reason": "Easy Apply no longer available — external ATS"}
 
-        # Use linkedin-api's internal authenticated session to submit
-        session = api._LinkedIn__client.session
+        # Use linkedin-api's internal authenticated session to submit.
+        # Note: the attribute was name-mangled (`_LinkedIn__client`) in older
+        # versions of linkedin-api; newer versions expose it as plain `client`.
+        client = getattr(api, "client", None) or getattr(api, "_LinkedIn__client")
+        session = client.session
         csrf = session.cookies.get("JSESSIONID", "ajax:0").strip('"')
 
         headers = {

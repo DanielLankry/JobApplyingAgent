@@ -10,7 +10,7 @@ import os
 import sys
 import time
 
-from linkedin_api import Linkedin
+from apply_linkedin import _get_api
 
 SEARCH_KEYWORDS = [
     "Backend Engineer",
@@ -31,21 +31,21 @@ MAX_PER_KEYWORD = 10
 
 
 def run():
-    email = os.environ.get("LINKEDIN_EMAIL", "")
-    password = os.environ.get("LINKEDIN_PASSWORD", "")
-
-    if not email or not password:
-        print(json.dumps({"jobs": [], "error": "LINKEDIN_EMAIL or LINKEDIN_PASSWORD not set"}))
+    # Reuse apply_linkedin's auth helper — it prefers LINKEDIN_LI_AT cookie auth
+    # (avoiding CHALLENGE on new IPs) and falls back to email/password.
+    api = _get_api()
+    if api is None:
+        print(json.dumps({"jobs": [], "error": "LinkedIn auth failed — set LINKEDIN_LI_AT cookie or LINKEDIN_EMAIL/PASSWORD"}))
         return
 
-    try:
-        api = Linkedin(email, password, authenticate=True)
-    except Exception as e:
-        print(json.dumps({"jobs": [], "error": f"LinkedIn login failed: {e}"}))
-        return
+    # Cap session redirects so a rate-limited / dead cookie fails in seconds
+    # instead of looping 30 times per keyword (which can blow the parent
+    # subprocess timeout when LinkedIn anti-bot kicks in).
+    api.client.session.max_redirects = 3
 
     jobs = []
     seen_ids: set[str] = set()
+    consecutive_redirect_failures = 0
 
     for keyword in SEARCH_KEYWORDS:
         try:
@@ -56,6 +56,7 @@ def run():
                 easy_apply=True,       # Easy Apply only
                 limit=MAX_PER_KEYWORD,
             )
+            consecutive_redirect_failures = 0  # reset on success
 
             for r in results:
                 # URN looks like "urn:li:fs_normalized_jobPosting:1234567890"
@@ -103,6 +104,15 @@ def run():
 
         except Exception as e:
             print(f"[linkedin] '{keyword}' search error: {e}", file=sys.stderr)
+            # If the session is being killed by LinkedIn anti-bot (manifests as
+            # TooManyRedirects on every call), bail early — retrying just burns
+            # the subprocess timeout. Cookie likely needs to cool off or refresh.
+            if "redirect" in str(e).lower():
+                consecutive_redirect_failures += 1
+                if consecutive_redirect_failures >= 2:
+                    print("[linkedin] aborting search — session rate-limited (li_at may need refresh)",
+                          file=sys.stderr)
+                    break
 
     print(json.dumps({"jobs": jobs, "error": None, "count": len(jobs)}))
 

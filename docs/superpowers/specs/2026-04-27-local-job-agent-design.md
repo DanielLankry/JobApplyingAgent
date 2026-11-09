@@ -119,7 +119,7 @@ APPLICANT_FIRST_NAME=Example
 APPLICANT_LAST_NAME=Applicant
 APPLICANT_EMAIL=applicant@example.com
 APPLICANT_PHONE=+972...
-APPLICANT_CITY=Tel Aviv
+APPLICANT_CITY=ExampleCity
 APPLICANT_LINKEDIN_URL=...
 APPLICANT_GITHUB_URL=...
 APPLICANT_PORTFOLIO_URL=
@@ -198,7 +198,7 @@ This is the **only** source of answers Claude is allowed to use during Phase 2. 
 }
 ```
 
-Example fills the real `config/applicant.json`. Anything left as `""` or `null` causes the agent to bail to manual when that field is required.
+the applicant fills the real `config/applicant.json`. Anything left as `""` or `null` causes the agent to bail to manual when that field is required.
 
 ### Field-matching rules
 
@@ -207,7 +207,7 @@ For each form field, Claude attempts to match on (in order):
 2. Substring match (e.g., a form label of "First Name *" matches `first_name`)
 3. Common synonyms table (e.g., `mobile` → `phone`, `linkedin profile` → `linkedin_url`)
 
-If no match found and the field is required → bail. The unmatched label is appended to `data/unanswered_questions.log` with timestamp + job URL so Example can extend the canned-answers file.
+If no match found and the field is required → bail. The unmatched label is appended to `data/unanswered_questions.log` with timestamp + job URL so the applicant can extend the canned-answers file.
 
 ---
 
@@ -294,7 +294,7 @@ Executed by Claude using `mcp__playwright__*` tools. Run sequentially per job (n
 - **Cron expression:** `0 9,17 * * 0-4`
 - **Timezone:** `Asia/Jerusalem`
 - **Mechanism:** local `CronCreate` on this machine
-- **Working-directory:** `C:\Users\Example\Desktop\Files\Projects\JobApplayingAgent`
+- **Working-directory:** `C:\Users\YOUR_USER\Desktop\Files\Projects\JobApplayingAgent`
 - **Prompt:** see Section 10
 
 The Python pipeline additionally honors `check_workday.py` for Israeli public holidays — cron may fire on a holiday Sun–Thu, but `run_agent.py` will print `SKIP` and exit cleanly.
@@ -336,7 +336,7 @@ and include the error in the summary's "Errors" line.
 - `DRY_RUN=true` is the **default** in `.env.example` and the **required** initial value in the real `.env`.
 - During DRY_RUN, the Playwright apply phase performs every step except the final submit click. It writes a JSONL record to `data/dry_run_log.jsonl` per job and a screenshot to `data/apply_logs/`.
 - LinkedIn auto-apply is **also** subject to DRY_RUN: `apply_linkedin.py` checks the env flag and, if true, returns `status="dry_run"` without calling the Easy Apply endpoint.
-- After 14 working days of stable runs, Example reviews `dry_run_log.jsonl` end-to-end. If satisfied, he flips `DRY_RUN=false`.
+- After 14 working days of stable runs, the applicant reviews `dry_run_log.jsonl` end-to-end. If satisfied, he flips `DRY_RUN=false`.
 - Cloud routines remain **paused** (not deleted) throughout this 2-week window.
 
 ---
@@ -383,10 +383,10 @@ and include the error in the summary's "Errors" line.
 
 The agent is considered shipped when:
 
-1. `python scripts/run_agent.py` runs end-to-end on Example's machine without errors and writes `new_jobs.json` + a partial `run_summary.json`.
+1. `python scripts/run_agent.py` runs end-to-end on the applicant's machine without errors and writes `new_jobs.json` + a partial `run_summary.json`.
 2. The local cron fires successfully at the next scheduled working-day slot.
 3. During DRY_RUN, Phase 2 produces at least one `data/apply_logs/*.png` showing a fully-filled form for a non-LinkedIn job, with no submission.
 4. The ClickUp summary message arrives in the configured channel with non-zero `total_new` count.
 5. During DRY_RUN: the Google Sheet receives a new row only for `Manual` or `Failed` non-LinkedIn outcomes (LinkedIn jobs all return `dry_run` and are not written). After DRY_RUN ends: the Sheet receives at least one `Applied` row per run with successful auto-apply.
-6. After 14 working days, Example approves switching `DRY_RUN=false` and live applies begin.
+6. After 14 working days, the applicant approves switching `DRY_RUN=false` and live applies begin.
 7. Cloud routines are paused on Day 1 and deleted by Day 28.

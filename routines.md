@@ -11,9 +11,9 @@ It runs in any of three ways:
 1. **Local Claude cron** — fires automatically twice a day on Israeli working
    days (`7 9,17 * * 0-4` IL time) **as long as a Claude Code session is
    alive on the PC**. The cron prompt simply says "follow `routines.md`".
-2. **Manual run by Example** — Example types `follow routines.md` in any
+2. **Manual run by the applicant** — the applicant types `follow routines.md` in any
    Claude Code session in the project, or pastes the steps below directly.
-3. **Recovery / catch-up run** — if the PC was off at 09:00 IL, Example can
+3. **Recovery / catch-up run** — if the PC was off at 09:00 IL, the applicant can
    trigger a manual run from the most recent missed slot.
 
 The agent does NOT need the PC to be running 24/7 — only at the moments a
@@ -26,7 +26,7 @@ no duplicate applications).
 
 ### Step 1 — Phase 1: search & LinkedIn auto-apply (Python)
 
-Working directory: the project root (`C:\Users\Example\Desktop\Files\Projects\JobApplayingAgent`).
+Working directory: the project root (`C:\Users\YOUR_USER\Desktop\Files\Projects\JobApplayingAgent`).
 
 Run the Phase 1 entrypoint, preferring the project's venv if it exists
 (falls back to system Python so a missing venv doesn't break the run):
@@ -163,7 +163,7 @@ DevRel.
 - DRY_RUN entries do **not** write to the Google Sheet and do **not** add
   to `data/applied_jobs.json` — so jobs stay re-applyable when the flag
   flips to `false`.
-- After 14 working days of stable runs, Example reviews `dry_run_log.jsonl`
+- After 14 working days of stable runs, the applicant reviews `dry_run_log.jsonl`
   end-to-end. If satisfied, he flips `DRY_RUN=false` in `.env`.
 - Cloud routines (`trig_01UEhwUL6p1pkaYaFNFqSZZm`, `trig_01PVoATaa9dPSQi4yZ8Bq85j`)
   remain paused throughout this window as a safety backup.

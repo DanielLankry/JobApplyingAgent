@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Migrate the existing job-application agent from Claude Code Cloud routines to a local twice-daily Claude cron on Example's Windows PC, expand search to Comeet + Greenhouse + Lever via SerpAPI, and add Playwright-MCP-driven auto-apply for non-LinkedIn ATS jobs with strict canned-answer policy and a 14-day DRY_RUN gate.
+**Goal:** Migrate the existing job-application agent from Claude Code Cloud routines to a local twice-daily Claude cron on the applicant's Windows PC, expand search to Comeet + Greenhouse + Lever via SerpAPI, and add Playwright-MCP-driven auto-apply for non-LinkedIn ATS jobs with strict canned-answer policy and a 14-day DRY_RUN gate.
 
 **Architecture:** Three-phase per-run flow. Phase 1 is a Python pipeline (`scripts/run_agent.py`) that does workday check → dedup sync → multi-source search → filter → in-process LinkedIn auto-apply via the existing voyager API path. Phase 2 is a Claude+Playwright-MCP runbook for non-LinkedIn ATS jobs (Comeet/Greenhouse/Lever/open-web), driven from the cron prompt. Phase 3 posts a summary to ClickUp Chat via the ClickUp MCP tool.
 
@@ -121,7 +121,7 @@ APPLICANT_FIRST_NAME=Example
 APPLICANT_LAST_NAME=Applicant
 APPLICANT_EMAIL=applicant@example.com
 APPLICANT_PHONE=+972XXXXXXXXX
-APPLICANT_CITY=Tel Aviv
+APPLICANT_CITY=ExampleCity
 APPLICANT_LINKEDIN_URL=https://www.linkedin.com/in/your-profile/
 APPLICANT_GITHUB_URL=https://github.com/your-username
 APPLICANT_PORTFOLIO_URL=
@@ -130,7 +130,7 @@ APPLICANT_YEARS_EXPERIENCE=3
 # ---- Google Service Account (for Sheets only) ----
 # Create in Google Cloud Console, enable Sheets API, paste full JSON
 # on a single line (replace newlines inside the private key with \n).
-GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"...","private_key_id":"...","private_key":"-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----\n","client_email":"...@....iam.gserviceaccount.com","client_id":"...","auth_uri":"https://accounts.google.com/o/oauth2/auth","token_uri":"https://oauth2.googleapis.com/token"}
+GOOGLE_SERVICE_ACCOUNT_JSON=
 
 # ---- Google Sheets ----
 # From sheet URL: docs.google.com/spreadsheets/d/{THIS_PART}/edit
@@ -1355,12 +1355,12 @@ git commit -m "docs: cron prompt — twice-daily local agent runbook"
 
 ## Task 10: Pre-flight smoke test (manual UAT)
 
-Before wiring the cron, prove Phase 1 works end-to-end on Example's machine
+Before wiring the cron, prove Phase 1 works end-to-end on the applicant's machine
 with real credentials.
 
-- [ ] **Step 1: Example fills the credentials**
+- [ ] **Step 1: the applicant fills the credentials**
 
-Example does this manually (do NOT prompt for or accept secrets in the
+the applicant does this manually (do NOT prompt for or accept secrets in the
 session):
 
 ```bash
@@ -1433,11 +1433,11 @@ Don't move to Task 11 until the smoke run produces a clean `run_summary.json`.
 ## Task 11: Configure the local Claude cron
 
 This step is interactive — it uses `CronCreate`. The agent running this plan
-should pause and confirm with Example before creating the cron.
+should pause and confirm with the applicant before creating the cron.
 
 - [ ] **Step 1: Confirm intent with the user**
 
-Before calling `CronCreate`, ask Example:
+Before calling `CronCreate`, ask the applicant:
 - "Ready to schedule the local cron? It will fire at 09:00 and 17:00
   Israel time, Sundays through Thursdays."
 Wait for explicit confirmation.
@@ -1448,7 +1448,7 @@ Use the `CronCreate` tool with these parameters:
 
 - `expression`: `0 9,17 * * 0-4`
 - `timezone`: `Asia/Jerusalem`
-- `working_directory`: `C:\Users\Example\Desktop\Files\Projects\JobApplayingAgent`
+- `working_directory`: `C:\Users\YOUR_USER\Desktop\Files\Projects\JobApplayingAgent`
 - `prompt`: `Follow the runbook in scripts/cron_prompt.md from the working directory.`
 
 (Exact field names depend on the local `CronCreate` tool's schema; load
@@ -1488,7 +1488,7 @@ List remote triggers and confirm both show paused.
 ## Task 13: Update memory
 
 **Files:**
-- Modify: `C:\Users\Example\.claude\projects\C--Users-Example-Desktop-Files-Projects-JobApplayingAgent\memory\project_job_agent.md`
+- Modify: `C:\Users\YOUR_USER\.claude\projects\C--Users-the applicant-Desktop-Files-Projects-JobApplayingAgent\memory\project_job_agent.md`
 
 - [ ] **Step 1: Update the project memory**
 
@@ -1557,7 +1557,7 @@ status (live, DRY_RUN active, cloud routines paused).
 
 ## Out of plan: 14-day DRY_RUN review
 
-Example's manual review after 14 working days, not part of this plan:
+the applicant's manual review after 14 working days, not part of this plan:
 - Inspect `data/dry_run_log.jsonl` and `data/apply_logs/`
 - If satisfied, flip `DRY_RUN=false` in `.env`
 - After another 14 working days of stable live runs: delete the two cloud

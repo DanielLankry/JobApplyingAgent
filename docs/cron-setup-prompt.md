@@ -37,13 +37,13 @@ Steps, in order:
 
 3. Create the new cron:
    - cron expression: 7 9,17 * * 0-4
-   - timezone: the local PC time (which is Asia/Jerusalem for Example)
+   - timezone: the local PC time (which is Asia/Jerusalem for the applicant)
    - recurring: true
    - durable: true
    - prompt:
        Local Job Application Agent run.
 
-       Working directory: C:\Users\Example\Desktop\Files\Projects\JobApplayingAgent
+       Working directory: C:\Users\YOUR_USER\Desktop\Files\Projects\JobApplayingAgent
 
        Open routines.md in the project root and execute it end-to-end.
        The first thing it instructs is `python scripts/run_agent.py` —

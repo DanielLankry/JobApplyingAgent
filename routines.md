@@ -46,11 +46,11 @@ Set all of the following in your Claude Desktop environment before the first run
 
 ```
 # Applicant profile
-APPLICANT_FIRST_NAME=
-APPLICANT_LAST_NAME=
-APPLICANT_EMAIL=
+APPLICANT_FIRST_NAME=Example
+APPLICANT_LAST_NAME=Applicant
+APPLICANT_EMAIL=applicant@example.com
 APPLICANT_PHONE=               # Format: +972XXXXXXXXX
-APPLICANT_CITY=                # e.g., "City, Country"
+APPLICANT_CITY=ExampleCity
 APPLICANT_LINKEDIN_URL=
 APPLICANT_GITHUB_URL=          # Optional — leave blank if none
 APPLICANT_PORTFOLIO_URL=       # Optional — leave blank if none
@@ -141,7 +141,7 @@ For each job in `data/new_jobs.json`, the script authenticates once with the Lin
 attempts Easy Apply. Each job lands in one of three categories:
 
 - **applied** — Easy Apply submitted successfully via LinkedIn's internal API
-- **manual** — Complex form or external ATS; logged to Google Sheets as "Manual" with the job URL so Example can apply by hand
+- **manual** — Complex form or external ATS; logged to Google Sheets as "Manual" with the job URL so the applicant can apply by hand
 - **failed** — API error; logged to `data/errors.log` and Google Sheets as "Failed"
 
 Wait 4 seconds between applications. Do not apply to more than MAX_APPLICATIONS_PER_RUN.

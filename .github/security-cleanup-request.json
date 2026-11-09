@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "repository": "DanielLankry/JobApplyingAgent",
+  "request_id": "security-cleanup-20261109-JobApplyingAgent-01",
+  "expected_refs": {
+    "refs/heads/feat/local-job-agent": "7fab2272dd1bb28fa99e49b6b1e5639139f9895e",
+    "refs/heads/master": "2ef2ea8295fa97fa88f9f67398d3c97f622f8b2d"
+  }
+}
